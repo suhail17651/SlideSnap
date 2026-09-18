@@ -1,0 +1,8 @@
+*.avi
+*.mp4
+*.mkv
+*.mov
+__pycache__/
+.pytest_cache/
+out/
+/tmp/
