@@ -110,6 +110,10 @@ def run(video_path, out_dir, debug=True, use_rectify=True, use_illum=True,
                 k["rectify_fallback"] = True
 
     # ---- Stage 5: enhancement + deskew + OCR ----
+    # Color contract: the PDF page stays COLOR (deskewed rectified frame) so
+    # photos/diagrams survive; OCR runs on a separate illumination-flattened
+    # GRAY copy. (Previously the gray flat overwrote the page -> all PDF
+    # pages came out grayscale. Caught on real CS231n footage.)
     slides = []
     skipped = []
     for i, k in enumerate(keyframes):
@@ -117,19 +121,20 @@ def run(video_path, out_dir, debug=True, use_rectify=True, use_illum=True,
             img = k["rectified"]
             if use_illum:
                 flat, _bg = ILL.flatten_illumination(img)
-                # keep colour for the PDF page; use flat gray for OCR pre-clean
-                work = cv2.cvtColor(flat, cv2.COLOR_GRAY2BGR)
+                gray = flat
             else:
-                work = img
-            fixed, angle = DSK.deskew(work)
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            # one angle, two warps: color page + gray OCR input stay aligned
+            _probe, angle = DSK.deskew(gray)
+            page, _ = DSK.deskew(img, angle=angle)
+            ocr_gray, _ = DSK.deskew(gray, angle=angle)
             try:
-                gray = cv2.cvtColor(fixed, cv2.COLOR_BGR2GRAY)
-                _bw = BIN.adaptive_binarize(gray)  # artefact for report/debug
+                _bw = BIN.adaptive_binarize(ocr_gray)  # artefact for report/debug
             except Exception:
                 pass
-            ocr = OCR.extract(fixed)
+            ocr = OCR.extract(cv2.cvtColor(ocr_gray, cv2.COLOR_GRAY2BGR))
             t = ts[k["sample_idx"]]
-            slides.append({"rectified": fixed, "text": ocr.get("text", ""),
+            slides.append({"rectified": page, "text": ocr.get("text", ""),
                            "words": ocr.get("words", []), "timestamp": t,
                            "timestamp_start": t, "angle": angle,
                            "ocr_available": ocr.get("available", False)})

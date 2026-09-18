@@ -14,31 +14,38 @@ def _words(text):
 
 
 def is_build(prev_slide, next_slide):
-    """True if next is a build-extension of prev (keep only final)."""
+    """True if next is a build-extension of prev (keep only final).
+
+    Guard: identical OCR text (common on real footage when the OCR backend
+    under-reads two different photo slides) must NOT collapse — the image
+    check below would pass on any two static-camera frames. Empty/identical
+    texts return False unless images are near-duplicates (exact or
+    compression-level duplicates).
+    """
     wp = _words(prev_slide.get("text", ""))
     wn = _words(next_slide.get("text", ""))
-    if not wp:
-        # fall back to image-only: very similar images collapse
-        try:
-            s = ssim_score(prev_slide["rectified"], next_slide["rectified"])
-            return s > 0.95
-        except Exception:
-            return False
-    overlap = len(wp & wn) / max(1, len(wp))
-    if overlap < C.DEDUP_TEXT_SUPERSET_RATIO:
-        return False
-    # next must contain strictly more (or equal with image similar)
-    if len(wn) <= len(wp):
-        try:
-            s = ssim_score(prev_slide["rectified"], next_slide["rectified"])
-            return s > C.DEDUP_SSIM
-        except Exception:
-            return False
     try:
         s = ssim_score(prev_slide["rectified"], next_slide["rectified"])
     except Exception:
-        return True  # text says superset; trust it
-    return s > C.DEDUP_SSIM or len(wn) > len(wp)
+        s = None
+    if not wp or not wn:
+        # fall back to image-only: collapse only near-duplicates
+        return s is not None and s > 0.99
+    if wp == wn:
+        # identical OCR text proves nothing (backend may have under-read
+        # both); collapse only if the images are ALSO near-duplicates.
+        return s is not None and s > 0.99
+    overlap = len(wp & wn) / max(1, len(wp))
+    if overlap < C.DEDUP_TEXT_SUPERSET_RATIO:
+        return False
+    if len(wn) <= len(wp):
+        # equal-or-shorter text with high overlap: same words reshuffled or a
+        # subset — not a build. Collapse only true near-duplicates.
+        return s is not None and s > 0.99
+    # next is a strict superset by word count: a build step (bullets added).
+    # Image similarity is NOT required here — builds legitimately change many
+    # pixels — but identical-image pairs were already handled above.
+    return True
 
 
 def deduplicate(slides):

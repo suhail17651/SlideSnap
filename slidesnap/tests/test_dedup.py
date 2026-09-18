@@ -35,5 +35,16 @@ def test_distinct_slides_kept():
     assert removed == 0 and len(kept) == 2
 
 
+def test_identical_ocr_text_does_not_collapse():
+    # regression: on real footage the OCR backend under-reads two different
+    # photo slides to similar/identical text; identical text alone must not
+    # collapse them (images differ).
+    a = _slide("welcome lecture", seed=11)
+    b = _slide("welcome lecture", seed=12)
+    assert DD.is_build(a, b) is False
+    kept, removed = DD.deduplicate([a, b])
+    assert removed == 0 and len(kept) == 2
+
+
 def test_empty():
     assert DD.deduplicate([]) == ([], 0)
