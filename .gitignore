@@ -6,3 +6,6 @@ __pycache__/
 .pytest_cache/
 out/
 /tmp/
+# course briefs (local only, not part of submission)
+BuildYourOwnProjectVITyarthi.pdf
+slide-extractor-roadmap.pdf
