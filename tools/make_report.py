@@ -110,7 +110,26 @@ def main():
         "hysteresis, sharpest-frame keyframe selection with occlusion rejection, homography "
         "rectification to 1600x900, illumination flattening plus adaptive binarization plus "
         "Hough deskew, Tesseract/RapidOCR word boxes, build-deduplication, and reportlab PDF "
-        "assembly with an invisible text layer and bookmarks.")
+        "assembly with an invisible text layer and bookmarks.\n\n"
+        "Objectives: (O1) detect every genuine slide change with ~zero false positives on "
+        "screen, angled-camera, whiteboard, and build-heavy footage; (O2) export one sharp "
+        "top-down image per slide via projective rectification; (O3) make every page "
+        "genuinely searchable via word-box-positioned OCR text; (O4) run fully on CPU from "
+        "the command line with reproducible, logged thresholds.\n\n"
+        "Dataset: four synthetic lecture videos x 16 slides (64 slides, 60 changes), "
+        "generated deterministically by tools/make_samples.py (seeded layouts, MJPG/AVI "
+        "intraframe codec to avoid keyframe pumping): a_clean (screen capture baseline), "
+        "b_angled (perspective warp plus static presenter silhouette), c_whiteboard "
+        "(progressive writing reveals), d_builds (bullet builds for the dedup stress test), "
+        "each with a hand-equivalent NAME.truth.txt timestamp file. Model-selection "
+        "rationale: no learned models are used for detection — classical CV (frame "
+        "differencing, HSV histograms, SSIM, Canny/contours, homography) is exact, "
+        "explainable, and CPU-cheap here; the only learned component is the OCR reader "
+        "(Tesseract preferred, RapidOCR-ONNX fallback). Evaluation methodology: "
+        "segmentation precision/recall/F1 at +-1 s tolerance, keyframe sharpness ratio and "
+        "occlusion rate, rectification residual angle, OCR word accuracy on 10 mid-segment "
+        "slides, and a rectify/illum ablation — all reproducible via tools/evaluate.py and "
+        "tools/ablation.py.")
     sec("3. Problem Statement",
         "Students scrub timelines to find one diagram; slides are un-searchable and "
         "un-printable. Faculty cannot repurpose recorded content; accessibility services lack "
@@ -162,7 +181,7 @@ def main():
         "Variance of Laplacian beats gradient-sum on low-texture slides (Laplacian punishes "
         "smooth blur steeply; Tenengrad cross-check agrees). Morphological background division "
         "beats global equalisation (which amplifies noise) and Otsu (which fails on uneven "
-        "projector light) — hence Sauce: Sauvola-style adaptive binarization. 2 fps decimation: "
+        "projector light) — hence Sauvola-style adaptive binarization. 2 fps decimation: "
         "~15x cheaper than 30 fps with zero recall loss on multi-second slides.")
     add(Paragraph("Observability (scores.csv + score plot):", b))
     img("scores_a.png", w=150 * mm,
@@ -202,17 +221,20 @@ def main():
                   "+17.1pp on clean footage (0.7429 to 0.9143). Keyframe quality: selected frames "
                   "average 1.11x their segment mean sharpness; 0/64 selected frames occluded. "
                   "Rectification residual text-baseline angle on b_angled: 0.0 deg (acceptance: <1 deg). "
-                  "OCR word accuracy: 91.4% clean / 76.2% angled. Dedup: builds collapse (d_builds "
-                  "keeps final bullet states); per-run pages-before/after logged in summary.txt.",
+                  "OCR word accuracy: 91.4% clean / 76.2% angled. Dedup: unit-tested "
+                  "(superset-text plus similar-image collapse); on the corpus each 4 s-apart "
+                  "truth change is a distinct slide so per-run pages-before/after are logged "
+                  "in summary.txt (16/16 on all four videos).",
                   b))
     img("keyframes_a.png", caption="Fig 8. Rectified keyframe grid (Stage 4 output on a_clean).")
 
     # 11-15
     sec("11. Testing Approach",
-        "13 pytest cases split by stage: test_difference (signal fires/quiet/histogram runs), "
+        "14 pytest cases split by stage: test_difference (signal fires/quiet/histogram runs), "
         "test_detector (isolated cut confirms, 3-spike motion burst rejected, build blip ignored, "
         "P/R/F1 counting), test_sharpness (sharp beats blur, LoG/Tenengrad agree), test_rectify "
-        "(output size, angled quad lock-on, corner ordering), test_pipeline (end-to-end smoke: "
+        "(output size, angled quad lock-on, corner ordering), test_dedup (superset builds "
+        "collapse, distinct slides kept), test_pipeline (end-to-end smoke: "
         "16 slides on a_clean). Corpus-level: per-video precision/recall/F1 plus OCR spot "
         "accuracy plus ablation, all reproducible via tools/evaluate.py and tools/ablation.py.")
     sec("12. Challenges Faced",

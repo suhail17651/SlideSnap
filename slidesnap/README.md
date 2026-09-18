@@ -5,6 +5,38 @@ un-printable. SlideSnap consumes a lecture recording and produces a
 deduplicated, perspective-corrected, OCR'd PDF of every distinct slide, with
 a bookmark per slide linking back to its video timestamp.
 
+> **A note on paths:** this repository is rooted at `slidesnap/` — i.e. this
+> README, `statement.md`, `requirements.txt`, `pipeline.py`, `config.py`,
+> `src/`, `app/`, `tests/`, `data/`, and `docs/` all sit at the repo root.
+> Helper scripts (`tools/make_samples.py`, `tools/evaluate.py`,
+> `tools/ablation.py`, `tools/make_diagrams.py`, `tools/make_report.py`) live
+> one level up in `tools/` and import the package via `sys.path`; run them
+> from the repo root as shown below.
+
+## Features
+
+- Slide-change detection from pure OpenCV/numpy primitives (no
+  scene-detection libraries): blur → abs-diff + histogram + SSIM → hysteresis
+  with motion-burst masking.
+- Sharpest-frame keyframe selection (variance of Laplacian + Tenengrad
+  cross-check) with presenter-occlusion rejection against the segment median.
+- Screen/board localisation and homography rectification to a 1600×900
+  top-down canvas (full-frame fallback when no quad is found).
+- Illumination flattening, adaptive binarization, Hough deskew, then OCR via
+  Tesseract (if installed) else RapidOCR-ONNX (pure pip) — word boxes become
+  the PDF's invisible, genuinely searchable text layer.
+- Slide-build deduplication and timestamp-bookmarked PDF assembly.
+- Fully CLI-runnable on CPU; per-run `scores.csv`, `summary.txt`, and
+  `debug/` (score plots, keyframe grids) for threshold defence.
+- Optional Streamlit demo UI with thumbnail review and keep/discard toggles.
+
+## Technologies / tools used
+
+Python, OpenCV (`warpPerspective`, Canny, contours, `approxPolyDP`),
+numpy, scikit-image (SSIM), RapidOCR-onnxruntime (+ optional Tesseract via
+pytesseract), Pillow, reportlab, Streamlit (demo only), pytest, matplotlib
+(debug plots only).
+
 ## Functional modules (rubric: >=3)
 
 | # | Module | Input | Output |
@@ -50,7 +82,6 @@ a bookmark per slide linking back to its video timestamp.
 ## Install & run (evaluator path — CLI only, no GUI needed)
 
 ```bash
-cd slidesnap
 pip install -r requirements.txt
 # system tesseract is OPTIONAL (RapidOCR is the fallback):
 #   sudo dnf install tesseract-ocr   # or: sudo apt install tesseract-ocr
@@ -65,8 +96,11 @@ python tools/make_samples.py
 # metrics (segmentation P/R/F1 + OCR accuracy):
 python tools/evaluate.py [--fast]
 
-# unit tests:
-python -m pytest slidesnap/tests/ -q
+# ablation (full vs --no-rectify vs --no-illum OCR accuracy):
+python tools/ablation.py
+
+# unit tests (run from repo root):
+python -m pytest tests/ -q
 ```
 
 Ablation flags (for the report table): `--no-rectify`, `--no-illum`,
@@ -81,18 +115,31 @@ Ablation flags (for the report table): `--no-rectify`, `--no-illum`,
 - `*.truth.txt` — ground-truth change timestamps
 
 Measured segmentation (tol ±1 s): **P=R=F1=1.00 on all four videos
-(60/60)**. OCR word accuracy on 10 `a_clean` slides: **87.9 %**
-(RapidOCR, CPU).
+(60/60)**. OCR word accuracy (10 mid-segment slides each): **91.4 %
+clean / 76.2 % angled-rectified** (RapidOCR, CPU).
+
+## Instructions for testing
+
+```bash
+# fast: unit tests (13) + segmentation metrics on the bundled corpus
+python -m pytest tests/ -q
+python tools/evaluate.py --fast
+# full: adds OCR spot accuracy (~35 s) and the rectify/illum ablation (~2 min)
+python tools/evaluate.py
+python tools/ablation.py
+```
 
 ## Repo layout
 
 ```
-slidesnap/
+./
   __main__.py  pipeline.py  config.py   # every threshold + tuning comment
+  README.md  statement.md  AGENT.md  requirements.txt
   src/segmentation/  src/keyframe/  src/geometry/
   src/enhance/  src/ocr/  src/assemble/  src/debug/
   app/streamlit_app.py  tests/  data/samples/  docs/
-tools/make_samples.py  tools/evaluate.py
+../tools/
+  make_samples.py  evaluate.py  ablation.py  make_diagrams.py  make_report.py
 ```
 
 ## Screenshots

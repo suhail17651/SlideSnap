@@ -26,19 +26,21 @@ innovation/depth 15, repo/version-control 10, report 20.
 | `src/assemble/{dedup,pdf_builder}.py` | build-collapse; reportlab image + invisible text + bookmarks |
 | `src/debug/overlay.py` | keyframe grids + score plots into `debug/` |
 | `app/streamlit_app.py` | optional demo UI |
-| `tests/test_{difference,detector,sharpness,rectify,pipeline}.py` | 13 tests, split by stage |
-| `data/samples/{a_clean,b_angled,c_whiteboard,d_builds}.avi` + `.truth.txt` | 4×16=64-slide corpus (MJPG/AVI — intraframe, no keyframe pumping) |
+| `tests/test_{difference,detector,sharpness,rectify,dedup,pipeline}.py` | 16 tests, split by stage |
+| `data/samples/{a_clean,b_angled,c_whiteboard,d_builds}.avi` + `.truth.txt` | 4x16=64-slide corpus (MJPG/AVI — intraframe, no keyframe pumping; `.avi` git-ignored, regenerate via `tools/make_samples.py`) |
 | `docs/` | `architecture.png usecase.png sequence.png class-diagram.png` + `keyframes_a.png scores_a.png` + `report.pdf` (submission) |
-| `tools/{make_samples,evaluate,make_diagrams,make_report}.py` | corpus gen, metrics, diagram gen, report gen |
+| `tools/{make_samples,evaluate,ablation,make_diagrams,make_report}.py` | corpus gen, metrics, ablation, diagram gen, report gen |
 
 `tools/` lives at **repo parent** (`/home/danish1075/Music/suhaail/tools/`), not inside
-`s slidesnap/` — because `make_samples/topcis` are imported by tests/eval via
+`slidesnap/` — because `make_samples` topics are imported by tests/eval via
 `sys.path`. Don't move it without fixing imports.
 
 ## 3. Measured behaviour (don't re-tune blindly)
 
 - Segmentation @ tol ±1 s: **P=R=F1=1.00 on all 4 videos (60/60)**.
-- OCR word accuracy (10 `a_clean` slides): **87.9 %** (RapidOCR, CPU).
+- OCR word accuracy (10 mid-segment slides each): **91.4 % clean / 76.2 %
+  angled-rectified** (RapidOCR, CPU). Ablation: rectification +17.1pp on
+  angled (0.5905→0.7619), illumination +17.1pp on clean (0.7429→0.9143).
 - Truth-pair signals (ROI): diff 0.013–0.03, SSIM 0.86–0.93.
   Non-truth: build/writing blips diff ≤0.006, SSIM ≥0.977; static 1.0.
   Thresholds: `DIFF_HIGH=0.005 DIFF_LOW=0.003 SSIM_HIGH_CHANGE=0.972 SSIM_LOW_STABLE=0.975`.
@@ -47,9 +49,12 @@ innovation/depth 15, repo/version-control 10, report 20.
   still computed, logged, unit-tested — report §8 explains why.
 - Burst mask: spike with >1 spike in ±2 pairs ⇒ motion, masked.
   Clean cuts are isolated singles, always survive.
-- `b_angled` rectify lock-on 94 % (rest = full-frame fallback, still fine).
+- `b_angled` rectify lock-on ~94-100 % (rest = full-frame fallback, still fine).
 - Pipeline ≈ 25 s/video (64 s, 1280×720) incl. RapidOCR; scoring-only ≈ 15 s.
-- Tests: 13 pass (`pytest slidesnap/tests/ -q`); smoke test needs corpus present.
+- Tests: 16 pass (`python -m pytest slidesnap/tests/ -q` from repo parent);
+  smoke test needs corpus present. Dedup is unit-tested; on the corpus each
+  4 s-apart truth change is a distinct slide, so dedup removes 0 there —
+  `d_builds` stresses the detector's build-step rejection instead.
 
 ## 4. Known gotchas
 
@@ -83,9 +88,9 @@ python3 tools/make_report.py            # regenerate docs/report.pdf
 
 - Report PDF is generated (`tools/make_report.py`); verify numbers match
   `tools/eval_results.txt` before submitting.
-- Submission needs: **public GitHub repo** (root = `slidesnap/` contents? no —
-  keep `slidesnap/` as the root the README describes), root `README.md`
-  path conventions per VITyarthi doc, report PDF upload, repo URL
+- Submission needs: **public GitHub repo rooted at `slidesnap/`** (so
+  `README.md`, `statement.md`, `requirements.txt` sit at the repo root per
+  the VITyarthi doc), report PDF upload, repo URL
   `https://github.com/{user}/{repo}` (no `/tree/main` suffix).
 - Plagiarism + AI-detection pipeline: report is generated from our own
   measured numbers; keep the `debug/` artefacts + `scores.csv` as evidence.
