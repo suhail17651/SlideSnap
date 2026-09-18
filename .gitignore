@@ -9,3 +9,6 @@ out/
 # course briefs (local only, not part of submission)
 BuildYourOwnProjectVITyarthi.pdf
 slide-extractor-roadmap.pdf
+
+# sample videos: large MJPG artefacts, regenerate via tools/make_samples.py
+slidesnap/data/samples/*.avi
