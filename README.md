@@ -1,162 +1,229 @@
-# SlideSnap — Lecture Video → Clean Searchable Slide PDF
+# SlideSnap — Lecture Video to Searchable Slide PDF & PPTX
 
-Recorded lectures trap slides inside hours of video: un-searchable,
-un-printable. SlideSnap consumes a lecture recording and produces a
-deduplicated, perspective-corrected, OCR'd PDF of every distinct slide, with
-a bookmark per slide linking back to its video timestamp.
+**Author:** Shaik Mohammed Suhail  
+**Registration No.:** 24BAI10942  
+**Course:** Computer Vision — Build Your Own Project (VITyarthi)  
+**Repository:** [https://github.com/suhail17651/slidesnap](https://github.com/suhail17651/slidesnap)  
 
-## Features
+---
 
-- Slide-change detection using OpenCV/numpy primitives (no scene-detection
-  libraries): blur → abs-diff + histogram + SSIM → hysteresis with
-  motion-burst masking.
-- Sharpest-frame keyframe selection (variance of Laplacian + Tenengrad
-  cross-check) with presenter-occlusion rejection against the segment median.
-- Screen/board localisation and homography rectification to a 1600×900
-  top-down canvas (full-frame fallback when no quad is found).
-- Illumination flattening, adaptive binarization, Hough deskew, then OCR via
-  Tesseract (if installed) else RapidOCR-ONNX (pure pip) — word boxes become
-  the PDF's invisible, genuinely searchable text layer.
-- Slide-build deduplication and timestamp-bookmarked PDF assembly.
-- Fully CLI-runnable on CPU; per-run scores.csv, summary.txt, and
-  debug/ (score plots, keyframe grids) for threshold tuning.
-- Optional Streamlit demo UI with thumbnail review and keep/discard toggles.
+Recorded lecture videos trap slide material inside hours of non-searchable, linear video streams. Scrubbing timelines to find specific formulas, code blocks, or diagrams is slow and frustrating for exam revision. 
 
-## Technologies / Tools Used
+**SlideSnap** automates slide extraction directly from video recordings using classical computer vision primitives (OpenCV, NumPy, scikit-image). It extracts every distinct slide, corrects camera tilt via projective homography, removes projector hotspots, performs OCR, deduplicates bullet builds, and compiles a searchable, bookmarked PDF alongside an editable PowerPoint (PPTX) deck.
 
-Python, OpenCV (warpPerspective, Canny, contours, approxPolyDP),
-numpy, scikit-image (SSIM), RapidOCR-onnxruntime (+ optional Tesseract via
-pytesseract), Pillow, reportlab, python-pptx, Streamlit (demo only), pytest,
-matplotlib (debug plots only).
+Entirely CPU-based, deterministic, and self-contained — built from scratch without black-box scene detection packages (e.g., PySceneDetect).
 
-## Functional Modules (>=3 required)
+---
 
-| # | Module | Input | Output |
-|---|--------|-------|--------|
-| 1 | Temporal Segmentation (src/segmentation/) | video file | slide-change timestamps + stable segments |
-| 2 | Keyframe Selection & Rectification (src/keyframe/, src/geometry/) | candidate frames | one sharp, deskewed, top-down image per slide |
-| 3 | Enhancement & OCR (src/enhance/, src/ocr/) | rectified images | cleaned images + extracted text + word boxes |
-| 4 | Document Assembly (src/assemble/) | images + text + timestamps | searchable PDF with bookmarks |
+## Key Features
 
-## Non-Functional Requirements
+- **Robust Transition Detection:** Gaussian-blurred frame differencing combined with Structural Similarity (SSIM). Employs temporal hysteresis and consecutive-run burst masking to ignore walking presenters while catching authentic slide cuts.
+- **Keyframe Selection & Occlusion Gate:** Ranks candidate frames within each stable segment by Variance of Laplacian (focus measure, cross-validated via Tenengrad). Rejects frames where the presenter blocks the screen by comparing against the segment's temporal median frame.
+- **Projective Rectification:** Automatic screen corner detection (Canny edge $\to$ contour extraction $\to$ `approxPolyDP` polygon approximation) and homography transformation (`warpPerspective`) to a standard 1600×900 canvas. Falls back to a clean full frame if no reliable quad is detected.
+- **Lighting Flattening & Deskew:** Large-kernel morphological closing division to eliminate projector hotspots and ambient shadows, Sauvola adaptive binarization, and Hough line baseline deskewing.
+- **Dual-Engine OCR:** Word-level bounding boxes via Tesseract if locally installed, with automatic pure-Python fallback to RapidOCR-ONNX (never raises on missing binaries). Extracted text is overlaid as an invisible, selectable text layer on full-color PDF pages.
+- **Build Deduplication:** Compares successive slides for text-superset and image similarity (SSIM > 0.94) to collapse progressive bullet-point reveals into single comprehensive slides.
+- **Dual Deliverable Export:** Emits timestamp-bookmarked, searchable PDFs via ReportLab and native 16:9 PowerPoint presentation decks via `python-pptx` (with OCR text stored in speaker notes).
+- **Auditability & Observability:** Logs per-frame difference metrics to `scores.csv` and outputs visual score plots and keyframe diagnostic grids in `debug/`.
 
-- **Performance** — video is streamed frame-by-frame; constant memory regardless of duration.
-- **Reliability** — full fallback chain: geometry → full-frame; OCR → Tesseract → RapidOCR → text-less PDF.
-- **Usability** — single CLI command produces a ready-to-use PDF/PPTX with no manual steps.
-- **Maintainability** — every threshold is centralised in config.py with inline comments.
-- **Error handling** — each pipeline stage catches and logs exceptions without crashing the run.
-- **Scalability** — modular stage design; any stage can be swapped or extended independently.
+---
 
-## How It Works
+## Core Pipeline Architecture
 
-1. **Sampling** — video is decimated to 2 fps and downscaled to 360p for
-   scoring. Full-res frames are kept for export. The video is streamed, never
-   fully loaded into memory.
-2. **Difference signals** — mean abs-diff after Gaussian blur, HSV-histogram
-   Bhattacharyya distance, and SSIM — all computed on an 18%-border centre ROI
-   so a presenter at the frame edges cannot influence the score.
-3. **Hysteresis detector** — a spike (2/2 votes) opens a candidate; the next
-   1.0 s window must contain no further unmasked spike. Runs of >=3 consecutive
-   spikes are masked as motion first; lone cuts always survive.
-4. **Keyframe selection** — sharpest frame per segment by variance of
-   Laplacian (Tenengrad cross-check), preferring frames that match the segment
-   median to reject presenter occlusion.
-5. **Geometry** — Canny → contours → approxPolyDP → largest convex
-   quadrilateral → getPerspectiveTransform + warpPerspective to a
-   1600x900 canvas. Falls back to full frame if no quad found.
-6. **Enhancement** — morphological-closing background estimate divided out
-   (removes projector hotspots), adaptive binarization, Hough deskew.
-7. **OCR** — Tesseract if installed, else RapidOCR-ONNX (pure pip), else
-   text-less PDF with a note. Word boxes form the PDF invisible text layer.
-8. **Dedup + PDF** — consecutive build-slides collapse when text is a superset
-   and images are SSIM-similar; reportlab writes image + invisible text +
-   timestamp bookmarks.
+The system is organized into four modular stages:
 
-## Install & Run
+| # | Stage | Directory | Responsibilities |
+|---|---|---|---|
+| **1** | **Temporal Segmentation** | `src/segmentation/` | 2 fps video decimation, 640×360 downscaled scoring proxy, center 18% ROI difference & SSIM calculation, burst masking, hysteresis cut confirmation. |
+| **2** | **Keyframe & Geometry** | `src/keyframe/`, `src/geometry/` | Laplacian variance focus scoring, temporal median occlusion gate, screen quad detection, 1600×900 perspective warp. |
+| **3** | **Enhancement & OCR** | `src/enhance/`, `src/ocr/` | Morphological illumination division, Sauvola adaptive binarization, Hough deskew, word-box text extraction. |
+| **4** | **Deduplication & Assembly**| `src/assemble/` | Bullet-build text superset collapse, presenter shot filtering, searchable PDF assembly, PPTX deck generation. |
 
+All operational thresholds, filter kernel sizes, and hysteresis parameters are strictly centralized in `config.py` with rationale documented inline.
+
+---
+
+## Measured Performance & Benchmark Results
+
+Evaluated on a 4-video synthetic benchmark corpus (64 slides, 60 ground-truth transitions) and validated on a 100-second live classroom recording from Stanford CS231n:
+
+- **Temporal Segmentation:** **Precision = 1.000, Recall = 1.000, F1 = 1.000** across all 4 benchmark videos (60 out of 60 ground-truth transitions correctly identified at $\pm$1.0 s tolerance, zero false cuts).
+- **OCR Word Accuracy (CPU):** Reaches **91.43%** on clean digital captures and **76.19%** on angled camera captures.
+- **Empirical Ablation Study:**
+  - Enabling homography rectification on angled footage increases word accuracy from **59.05% to 76.19% (+17.14 pp)**.
+  - Enabling morphological illumination flattening on clean footage increases word accuracy from **74.29% to 91.43% (+17.14 pp)**.
+- **Real-World Validation (Stanford CS231n Lecture 1):** Successfully detects the 12.0 s speaker-to-slide cut through presenter pacing using the consecutive-run rule, and filters out 2 presenter-only frames while retaining true content slides.
+- **Processing Throughput:** Processes a 64 s 720p video in ~25.4 s on a standard laptop CPU (~2.5× faster than real-time).
+
+---
+
+## Repository Layout & Project Structure
+
+```text
+SlideSnap/
+├── pipeline.py                 # End-to-end CLI pipeline orchestrator
+├── config.py                   # Centralized hyperparameter & threshold configurations
+├── statement.md                # Formal problem statement & scope document (Rubric §5.2)
+├── requirements.txt            # Pinned CPU dependencies (OpenCV, RapidOCR, ReportLab, etc.)
+├── __main__.py                 # Module execution entry point (python3 -m slidesnap)
+│
+├── src/                        # Core modular engine (16 functional components)
+│   ├── segmentation/           # Phase 1: Temporal boundary & transition detection
+│   │   ├── reader.py           # Subsampled video reader & frame generator
+│   │   ├── difference.py       # Gaussian abs-diff, color histogram & SSIM metrics
+│   │   └── detector.py         # Hysteresis state machine & run-rule burst filter
+│   ├── keyframe/               # Phase 2: Focus scoring & occlusion filtration
+│   │   ├── sharpness.py        # Variance of Laplacian & Tenengrad focus operators
+│   │   ├── occlusion.py        # Segment temporal median presenter filter
+│   │   └── selector.py         # Multi-candidate sharpness & stability ranker
+│   ├── geometry/               # Phase 3: Projective rectification & deskew
+│   │   ├── screen_detect.py    # Canny edge, contour & approxPolyDP quad detector
+│   │   └── rectify.py          # Homography perspective warp (1600x900 standard canvas)
+│   ├── enhance/                # Phase 4: Illumination flattening & binarization
+│   │   ├── illumination.py     # Morphological closing background division
+│   │   ├── binarize.py         # Sauvola local adaptive thresholding
+│   │   └── deskew.py           # Hough transform baseline rotation corrector
+│   ├── ocr/                    # Phase 5: Optical character recognition
+│   │   └── extract.py          # RapidOCR-ONNX / Tesseract word & box extractor
+│   ├── assemble/               # Phase 6: Deduplication & dual-format delivery
+│   │   ├── dedup.py            # SSIM & text superset slide-build collapse
+│   │   ├── nonslide.py         # Edge density & text presence validation gate
+│   │   ├── pdf_builder.py      # Searchable PDF with invisible text layer
+│   │   └── pptx_builder.py     # Native 16:9 PowerPoint presentation export
+│   └── debug/                  # Phase 7: Diagnostic tracing & visualization
+│       └── overlay.py          # Metric traces, score plots & keyframe grids
+│
+├── tests/                      # Automated test suite (24 passing unit & integration tests)
+│   ├── test_detector.py        # State machine & transition edge test cases
+│   ├── test_difference.py      # Pixel diff & SSIM signal unit tests
+│   ├── test_sharpness.py       # Focus measure & blur detection unit tests
+│   ├── test_rectify.py         # Homography & corner ordering unit tests
+│   ├── test_dedup.py           # Slide-build superset collapsing unit tests
+│   ├── test_nonslide.py        # Non-slide content rejection tests
+│   ├── test_pptx.py            # PPTX export generation & formatting tests
+│   └── test_pipeline.py        # End-to-end synthetic video integration tests
+│
+├── data/samples/               # Bundled evaluation corpus (4 distinct recording regimes)
+│   ├── a_clean.avi             # Direct screen-capture baseline
+│   ├── b_angled.avi            # Perspective-distorted projector capture
+│   ├── c_whiteboard.avi        # Uneven lighting with walking presenter
+│   └── d_builds.avi            # Progressive bullet-point slide builds
+│
+├── demo/                       # Real-world lecture proof (Stanford CS231n)
+│   ├── cs231n_clip.mp4         # 100-second real-world lecture video clip
+│   ├── slides.pdf              # Generated searchable PDF deliverable
+│   ├── slides.pptx             # Generated PowerPoint deck deliverable
+│   ├── keyframes.png           # Extracted slide keyframe matrix
+│   ├── scores.csv              # Per-frame difference metric trace log
+│   └── DEMO.md                 # Real-footage evaluation notes & reproduction
+│
+├── docs/                       # Academic report, design models & visual artifacts
+│   ├── report.pdf              # 13-page formal academic report (LaTeX pdflatex)
+│   ├── report.tex              # Complete LaTeX report source code
+│   ├── architecture.png        # System architecture diagram
+│   ├── workflow.png            # Stage-by-stage process flow diagram
+│   ├── usecase.png             # UML Use Case diagram
+│   ├── sequence.png            # UML Sequence execution diagram
+│   ├── class-diagram.png       # UML Class and component diagram
+│   ├── er.png                  # Entity-Relationship diagram
+│   ├── scores_a.png            # Empirical metric trace visualization
+│   └── keyframes_a.png         # Pipeline output keyframe matrix
+│
+├── app/                        # Optional interactive review dashboard
+│   └── streamlit_app.py        # Streamlit web UI with keep/discard toggles
+│
+└── tools/                      # Benchmark, ablation & report generation scripts
+    ├── evaluate.py             # Segmentation P/R/F1 & OCR evaluation runner
+    ├── ablation.py             # Feature ablation experiment runner
+    ├── make_samples.py         # Synthetic benchmark video generator
+    ├── make_diagrams.py        # Diagram generator script
+    └── make_report.py          # Automated LaTeX compilation & audit script
+```
+
+## Installation & Setup
+
+### 1. Clone the repository and install dependencies
 ```bash
+git clone https://github.com/suhail17651/slidesnap.git
+cd slidesnap
 pip install -r requirements.txt
-# Tesseract is OPTIONAL (RapidOCR is the fallback):
-#   sudo dnf install tesseract-ocr   # or: sudo apt install tesseract-ocr
-
-# Run on any lecture video (PDF + editable PPTX by default):
-python -m slidesnap /path/to/lecture.mp4 --out out/
-# outputs: out/slides.pdf  out/slides.pptx  out/scores.csv  out/summary.txt  out/debug/
-
-# PDF only:
-python -m slidesnap /path/to/lecture.mp4 --out out/ --formats pdf
-
-# Regenerate the 4-video test corpus (64 slides, MJPG/AVI):
-python tools/make_samples.py
-
-# Evaluation metrics (segmentation P/R/F1 + OCR accuracy):
-python tools/evaluate.py [--fast]
-
-# Ablation study (full vs --no-rectify vs --no-illum):
-python tools/ablation.py
 ```
 
-Ablation flags: --no-rectify, --no-illum, --keep-all.
-Streamlit demo (optional): streamlit run app/streamlit_app.py
+*Note: RapidOCR-ONNX is installed via pip and runs out of the box. System Tesseract (`tesseract-ocr`) is optional; if present, SlideSnap uses it automatically.*
 
-## Instructions for Testing
+---
+
+## How to Run
+
+### Run the CLI Pipeline on a Video
+```bash
+# Process video and export both PDF and editable PPTX:
+python3 pipeline.py /path/to/lecture.mp4 --out out/
+
+# Or run as a module:
+python3 -m slidesnap /path/to/lecture.mp4 --out out/
+
+# Export PDF only:
+python3 pipeline.py /path/to/lecture.mp4 --out out/ --formats pdf
+```
+
+### Generated Outputs
+```text
+out/
+├── slides.pdf         # Clean full-color slides with invisible, searchable OCR text & bookmarks
+├── slides.pptx        # 16:9 presentation deck with extracted text in speaker notes
+├── scores.csv         # Per-frame diff, hist, and SSIM metrics log
+├── summary.txt        # Runtime statistics, detected cuts, and soft-failure notes
+└── debug/             # Diagnostic score plots and keyframe inspection grids
+```
+
+### Ablation Flags (Benchmarking & Analysis)
+```bash
+python3 pipeline.py video.mp4 --no-rectify   # Disable perspective homography
+python3 pipeline.py video.mp4 --no-illum     # Disable illumination flattening
+python3 pipeline.py video.mp4 --keep-all     # Disable build deduplication
+```
+
+### Interactive Streamlit Web UI (Optional Demo)
+```bash
+streamlit run app/streamlit_app.py
+```
+Provides an interactive drag-and-drop dashboard with stage progress bars, thumbnail review grids, and per-slide keep/discard toggles before exporting.
+
+---
+
+## Running Tests & Evaluation
+
+SlideSnap includes **24 automated unit and integration tests** verifying each stage in isolation as well as end-to-end execution:
 
 ```bash
-# Fast: unit tests (21 tests) + segmentation metrics on bundled corpus
-python -m pytest tests/ -q
-python tools/evaluate.py --fast
+# Run the complete test suite:
+python3 -m pytest tests/ -q
 
-# Full: adds OCR spot accuracy (~35 s) and rectify/illum ablation (~2 min)
-python tools/evaluate.py
-python tools/ablation.py
+# Run segmentation metrics evaluation on the bundled corpus:
+python3 tools/evaluate.py --fast
+
+# Run full evaluation including OCR spot accuracy:
+python3 tools/evaluate.py
+
+# Run ablation evaluation across pipeline configurations:
+python3 tools/ablation.py
 ```
 
-## Test Corpus (data/samples/, 4 videos x 16 slides = 64)
+---
 
-- a_clean.avi — screen capture, easy baseline
-- b_angled.avi — perspective-warped + static presenter silhouette (hard)
-- c_whiteboard.avi — progressive writing reveals
-- d_builds.avi — bullet builds (dedup stress test)
-- *.truth.txt — ground-truth change timestamps
+## Project Artefacts & Report
 
-## Demo on Real Footage (demo/)
-
-- demo/cs231n_clip.mp4 — 100 s of Stanford CS231n Lecture 1, shipped so
-  anyone can reproduce the real-world run.
-- demo/slides.pdf + demo/slides.pptx — the generated deck (colour pages,
-  OCR text layer / speaker notes).
-- demo/keyframes.png, demo/scores.csv — per-run observability artefacts.
-
-Measured segmentation (tol +-1 s): P=R=F1=1.00 on all four synthetic videos
-(60/60). OCR word accuracy (10 mid-segment slides each): 91.4% clean /
-76.2% angled-rectified (RapidOCR, CPU).
-
-## Repo Layout
-
-```
-./
-  __main__.py    pipeline.py    config.py        # entry point + full pipeline + all thresholds
-  README.md      statement.md   requirements.txt
-  src/
-    segmentation/   keyframe/   geometry/
-    enhance/        ocr/        assemble/        debug/
-  app/streamlit_app.py
-  tests/
-  data/samples/
-  docs/            # diagrams + report PDF
-  demo/            # real-footage clip + generated outputs
-tools/             # helper scripts (import package via sys.path)
-  make_samples.py  evaluate.py  ablation.py  make_diagrams.py  make_report.py
-```
-
-## Screenshots / Diagrams
-
-- docs/architecture.png — system architecture diagram
-- docs/usecase.png — use case diagram
-- docs/class-diagram.png — class/component diagram
-- docs/sequence.png — sequence diagram
-- docs/workflow.png — process workflow diagram
-- docs/er.png — ER diagram
-- docs/keyframes_a.png — rectified keyframe grid (pipeline output)
-- docs/scores_a.png — per-pair diff/hist/SSIM signals (observability)
-- docs/report.pdf — full project report
+- **Comprehensive 15-Section Academic Report:** [`docs/report.pdf`](docs/report.pdf)  
+  Authored in LaTeX ([`docs/report.tex`](docs/report.tex)) and compiled via `pdflatex`. Covers full problem analysis, functional/non-functional requirements, UML diagrams, design justifications, implementation details, live segmentation results, ablation studies, and testing methodology.
+- **Design Diagrams:**
+  - `docs/architecture.png` — System architecture diagram
+  - `docs/workflow.png` — Process flow diagram
+  - `docs/usecase.png` — UML use case model
+  - `docs/sequence.png` — UML execution sequence model
+  - `docs/class-diagram.png` — Component & class structure
+  - `docs/er.png` — Data entity-relationship diagram
+- **Empirical Visualizations:**
+  - `docs/scores_a.png` — Per-frame difference/SSIM metric trace with threshold boundaries
+  - `docs/keyframes_a.png` — Extracted rectified slide keyframe grid
+- **Real-Footage Demo:** `demo/` contains a 100 s clip from Stanford CS231n along with committed, reproducible `slides.pdf` and `slides.pptx` outputs (see [`demo/DEMO.md`](demo/DEMO.md)).
