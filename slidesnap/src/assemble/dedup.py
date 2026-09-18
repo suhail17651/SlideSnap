@@ -28,20 +28,21 @@ def is_build(prev_slide, next_slide):
         s = ssim_score(prev_slide["rectified"], next_slide["rectified"])
     except Exception:
         s = None
+    near_dup = s is not None and s > C.DEDUP_NEAR_DUP_SSIM
     if not wp or not wn:
         # fall back to image-only: collapse only near-duplicates
-        return s is not None and s > 0.99
+        return near_dup
     if wp == wn:
         # identical OCR text proves nothing (backend may have under-read
         # both); collapse only if the images are ALSO near-duplicates.
-        return s is not None and s > 0.99
+        return near_dup
     overlap = len(wp & wn) / max(1, len(wp))
     if overlap < C.DEDUP_TEXT_SUPERSET_RATIO:
         return False
     if len(wn) <= len(wp):
         # equal-or-shorter text with high overlap: same words reshuffled or a
         # subset — not a build. Collapse only true near-duplicates.
-        return s is not None and s > 0.99
+        return near_dup
     # next is a strict superset by word count: a build step (bullets added).
     # Image similarity is NOT required here — builds legitimately change many
     # pixels — but identical-image pairs were already handled above.

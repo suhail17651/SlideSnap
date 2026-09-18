@@ -4,6 +4,7 @@ numpy==2.3.*
 scikit-image==0.26.*      # SSIM (structural_similarity)
 pillow==11.*              # PDF page rasterisation
 reportlab==5.*            # searchable PDF + bookmarks
+python-pptx==1.0.*        # editable PPTX export (pure pip)
 rapidocr-onnxruntime==1.2.*  # OCR without system tesseract (fallback: pytesseract)
 pytesseract==0.3.*        # optional: used first if the tesseract binary exists
 streamlit==1.64.*         # optional demo UI (CLI is the graded path)

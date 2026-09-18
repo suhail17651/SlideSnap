@@ -34,8 +34,8 @@ a bookmark per slide linking back to its video timestamp.
 
 Python, OpenCV (`warpPerspective`, Canny, contours, `approxPolyDP`),
 numpy, scikit-image (SSIM), RapidOCR-onnxruntime (+ optional Tesseract via
-pytesseract), Pillow, reportlab, Streamlit (demo only), pytest, matplotlib
-(debug plots only).
+pytesseract), Pillow, reportlab, python-pptx, Streamlit (demo only), pytest,
+matplotlib (debug plots only).
 
 ## Functional modules (rubric: >=3)
 
@@ -59,8 +59,8 @@ pytesseract), Pillow, reportlab, Streamlit (demo only), pytest, matplotlib
    jitter ~0.13 > true-change values 0.015–0.05; see report §8).
 3. **Hysteresis detector** (`detector.py`): a spike (2/2 votes) opens a
    candidate; the next 1.0 s window must contain no further unmasked spike.
-   Spikes in dense motion bursts (walk-by: consecutive spikes within ±2
-   pairs) are masked first (`BURST_MAX_SPIKES=1`, `BURST_RADIUS=2`).
+   Runs of ≥3 consecutive spikes are masked as motion first
+   (`BURST_MIN_RUN=3`); lone cuts always survive.
    Single-pair blips (build steps, writing reveals) can neither open a
    change nor break a window.
 4. **Keyframe** (`keyframe/`): sharpest frame per segment by variance of
@@ -86,9 +86,10 @@ pip install -r requirements.txt
 # system tesseract is OPTIONAL (RapidOCR is the fallback):
 #   sudo dnf install tesseract-ocr   # or: sudo apt install tesseract-ocr
 
-# run on any lecture video:
+# run on any lecture video (PDF + editable PPTX by default):
 python -m slidesnap /path/to/lecture.mp4 --out out/
-# outputs: out/slides.pdf  out/scores.csv  out/summary.txt  out/debug/
+# outputs: out/slides.pdf  out/slides.pptx  out/scores.csv  out/summary.txt  out/debug/
+# --formats pdf   # PDF only;  --keep-all disables build-dedup
 
 # regenerate the 4-video test corpus (64 slides, MJPG/AVI):
 python tools/make_samples.py
@@ -114,6 +115,15 @@ Ablation flags (for the report table): `--no-rectify`, `--no-illum`,
 - `d_builds.avi` — bullet builds (dedup stress test)
 - `*.truth.txt` — ground-truth change timestamps
 
+## Demo on real footage (`demo/`)
+
+- `demo/cs231n_clip.mp4` — 100 s of Stanford CS231n Lecture 1 (speaker intro
+  → "Welcome" photo slide), shipped so anyone can reproduce the real-world run.
+- `demo/slides.pdf` + `demo/slides.pptx` — the generated deck (color pages,
+  OCR text layer / speaker notes), `demo/keyframes.png`, `demo/scores.csv`.
+- See `demo/DEMO.md` for measured numbers, what was fixed because of this
+  clip (burst-mask run rule, color pages, dedup/OCR guards), and honest limits.
+
 Measured segmentation (tol ±1 s): **P=R=F1=1.00 on all four videos
 (60/60)**. OCR word accuracy (10 mid-segment slides each): **91.4 %
 clean / 76.2 % angled-rectified** (RapidOCR, CPU).
@@ -121,7 +131,7 @@ clean / 76.2 % angled-rectified** (RapidOCR, CPU).
 ## Instructions for testing
 
 ```bash
-# fast: unit tests (13) + segmentation metrics on the bundled corpus
+# fast: unit tests (21) + segmentation metrics on the bundled corpus
 python -m pytest tests/ -q
 python tools/evaluate.py --fast
 # full: adds OCR spot accuracy (~35 s) and the rectify/illum ablation (~2 min)

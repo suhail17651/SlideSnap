@@ -23,11 +23,12 @@ innovation/depth 15, repo/version-control 10, report 20.
 | `src/geometry/{screen_detect,rectify}.py` | Canny→contours→approxPolyDP quad; `warpPerspective` to 1600×900 |
 | `src/enhance/{illumination,binarize,deskew}.py` | morph-close background ÷; adaptive thresh; Hough deskew |
 | `src/ocr/extract.py` | Tesseract → RapidOCR-ONNX → off (never raises) |
-| `src/assemble/{dedup,pdf_builder}.py` | build-collapse; reportlab image + invisible text + bookmarks |
+| `src/assemble/{dedup,nonslide,pdf_builder,pptx_builder}.py` | build-collapse; speaker-frame filter; reportlab PDF + python-pptx |
 | `src/debug/overlay.py` | keyframe grids + score plots into `debug/` |
 | `app/streamlit_app.py` | optional demo UI |
-| `tests/test_{difference,detector,sharpness,rectify,dedup,pipeline}.py` | 16 tests, split by stage |
+| `tests/test_{difference,detector,sharpness,rectify,dedup,nonslide,pptx,pipeline}.py` | 21 tests, split by stage |
 | `data/samples/{a_clean,b_angled,c_whiteboard,d_builds}.avi` + `.truth.txt` | 4x16=64-slide corpus (MJPG/AVI — intraframe, no keyframe pumping; `.avi` git-ignored, regenerate via `tools/make_samples.py`) |
+| `demo/` | real-world proof: 100 s CS231n clip + generated PDF/PPTX + DEMO.md |
 | `docs/` | `architecture.png usecase.png sequence.png class-diagram.png` + `keyframes_a.png scores_a.png` + `report.pdf` (submission) |
 | `tools/{make_samples,evaluate,ablation,make_diagrams,make_report}.py` | corpus gen, metrics, ablation, diagram gen, report gen |
 
@@ -47,11 +48,19 @@ innovation/depth 15, repo/version-control 10, report 20.
 - Fusion = diff + SSIM (2/2). **Histogram excluded from fusion**
   (measured inverted on MJPG: static jitter ~0.13 > true changes 0.015–0.05);
   still computed, logged, unit-tested — report §8 explains why.
-- Burst mask: spike with >1 spike in ±2 pairs ⇒ motion, masked.
-  Clean cuts are isolated singles, always survive.
+- Burst mask: runs of ≥3 CONSECUTIVE spikes ⇒ motion, masked
+  (`BURST_MIN_RUN=3`). Lone cuts always survive — including a cut sitting
+  next to motion (the old neighbourhood-count vetoed the real t~52 s CS231n
+  cut; consecutive-run fixed it).
+- Dedup near-dup: `DEDUP_NEAR_DUP_SSIM=0.94` (measured on real clip: exact
+  re-show 0.9918, eyeball build 0.951, speaker-vs-speaker 0.9317). Identical
+  OCR text alone never collapses (backend under-read guard).
+- Non-slide filter: `<5 words AND yspread<0.75` ⇒ presenter shot, dropped
+  with reason logged (measured: speaker 3-5 words/0.46-0.62 spread, true
+  slides 5-26/0.93-0.96).
 - `b_angled` rectify lock-on ~94-100 % (rest = full-frame fallback, still fine).
 - Pipeline ≈ 25 s/video (64 s, 1280×720) incl. RapidOCR; scoring-only ≈ 15 s.
-- Tests: 16 pass (`python -m pytest slidesnap/tests/ -q` from repo parent);
+- Tests: 21 pass (`python -m pytest slidesnap/tests/ -q` from repo parent);
   smoke test needs corpus present. Dedup is unit-tested; on the corpus each
   4 s-apart truth change is a distinct slide, so dedup removes 0 there —
   `d_builds` stresses the detector's build-step rejection instead.

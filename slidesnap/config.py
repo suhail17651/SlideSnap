@@ -72,13 +72,13 @@ MIN_VOTES = 2
 # walk-bys (transient spike with no calm window after it) while true
 # slide changes, 4s apart on the corpus, confirm cleanly.
 STABILITY_SECONDS = 1.0
-# Hysteresis burst mask: a presenter walk-by fires motion spikes on
-# consecutive scored pairs for ~1s. Any spike with more than BURST_MAX_SPIKES
-# spikes in its +-BURST_RADIUS neighbourhood is motion, not a cut, and is
-# masked before confirmation. Clean cuts are isolated single spikes, so they
-# always survive. (BURST_RADIUS=2 @2fps = ±1s neighbourhood.)
-BURST_MAX_SPIKES = 1
-BURST_RADIUS = 2
+# Hysteresis burst mask: presenter walk-bys / camera pans fire spikes on
+# CONSECUTIVE scored pairs (measured 5-14 long on a real CS231n lecture
+# clip). Mask only runs of >= BURST_MIN_RUN consecutive spikes as motion.
+# Clean cuts are lone spikes (run length 1) and always survive; 2-runs are
+# kept too, so a cut sitting next to motion is never vetoed by its
+# neighbour (a neighbourhood-count would kill it — measured failure).
+BURST_MIN_RUN = 3
 # Minimum segment length: ignore flicker segments shorter than this.
 MIN_SEGMENT_SECONDS = 1.0
 # Tolerance window for evaluation (±1s around ground truth).
@@ -135,10 +135,28 @@ MIN_OCR_CONF = 30  # tesseract: drop words below this confidence (0-100 scale)
 RAPID_MIN_CONF = 0.3  # rapidocr: drop words below this (0-1 scale)
 
 # ---- Deduplication (assemble/dedup.py) ----
-# Slide builds collapse: if next slide's text is a strict superset of current
-# AND image SSIM > threshold, keep only the final (most complete) one.
-DEDUP_SSIM = 0.85
+# Near-duplicate collapse (exact/compression-level duplicates, eyeball-graphics
+# builds): text empty-or-identical AND image SSIM > threshold. MEASURED on a
+# real CS231n lecture clip (RapidOCR, rectified pages): exact photo-slide
+# re-shows 0.9918, eyeball-graphics build 0.951, speaker-vs-speaker 0.9317.
+# 0.94 splits the near-dups from the speaker pair with margin on both sides.
+DEDUP_NEAR_DUP_SSIM = 0.94
 DEDUP_TEXT_SUPERSET_RATIO = 0.9  # >=90% of words of slide N appear in N+1
+
+# ---- Non-slide (speaker) filter (assemble/nonslide.py) ----
+# A keyframe showing the presenter (not a slide) has almost no OCR text and
+# what little there is hugs the frame bottom (watermark/footer), never the
+# body. MEASURED on a real CS231n clip (RapidOCR, 450px-high OCR input):
+# speaker frames 3-5 words / yspread 0.46-0.62, true slides 5-26 words /
+# yspread 0.93-0.96. Conservative cut: < NONSLIDE_MIN_WORDS words AND
+# yspread < NONSLIDE_MAX_YSPREAD. Margin: nearest true slide has 5 words
+# (above the count cut) and 0.93 spread (far above the spread cut) — both
+# conditions must hold, so no true slide is within one condition of the cut.
+NONSLIDE_MIN_WORDS = 5
+NONSLIDE_MAX_YSPREAD = 0.75
+# A slide is meaningful only if it has at least this many words; shorter
+# texts (watermarks) still count when spread wide — the AND above decides.
+NONSLIDE_ENABLE = True
 
 # ---- Performance ----
 # Target: 60-min 1080p lecture in <5 min on CPU via decimation + 360p scoring.

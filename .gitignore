@@ -1,5 +1,4 @@
 *.avi
-*.mp4
 *.mkv
 *.mov
 __pycache__/
@@ -12,3 +11,5 @@ slide-extractor-roadmap.pdf
 
 # sample videos: large MJPG artefacts, regenerate via tools/make_samples.py
 slidesnap/data/samples/*.avi
+# demo clip is shipped (mp4 exception to the rule above)
+!slidesnap/demo/*.mp4

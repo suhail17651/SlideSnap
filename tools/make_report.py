@@ -192,15 +192,20 @@ def main():
     sec("9. Implementation Details",
         "reader.py streams at 2 fps and resizes scoring copies to 640x360. difference.py "
         "implements abs-diff, HSV-histogram Bhattacharyya, and SSIM from OpenCV/numpy/skimage "
-        "primitives. detector.py applies burst masking then hysteresis confirmation. "
-        "sharpness.py/occlusion.py/selector.py pick the sharpest median-consistent frame. "
-        "screen_detect.py (Canny, dilate, contours, approxPolyDP, convexity plus aspect gates) "
-        "feeds rectify.py (getPerspectiveTransform/warpPerspective to 1600x900, full-frame "
-        "fallback). illumination.py/binarize.py/deskew.py clean the page; ocr/extract.py tries "
-        "Tesseract, then RapidOCR-ONNX, then degrades gracefully. dedup.py collapses "
-        "superset-text builds; pdf_builder.py writes image plus invisible positioned text plus "
-        "bookmarks. pipeline.py wires everything with per-stage soft-failure notes; 20+ modules "
-        "across src/, app/, tools/, tests/.")
+        "primitives. detector.py applies consecutive-run burst masking then hysteresis "
+        "confirmation. sharpness.py/occlusion.py/selector.py pick the sharpest "
+        "median-consistent frame. screen_detect.py (Canny, dilate, contours, approxPolyDP, "
+        "convexity plus aspect gates) feeds rectify.py (getPerspectiveTransform/"
+        "warpPerspective to 1600x900, full-frame fallback). illumination.py/binarize.py/"
+        "deskew.py clean the page (color page preserved for the PDF, gray copy for OCR); "
+        "ocr/extract.py tries Tesseract, then RapidOCR-ONNX, then degrades gracefully. "
+        "nonslide.py drops presenter shots (<5 words AND yspread<0.75, reasons logged). "
+        "dedup.py collapses superset-text builds and near-duplicate re-shows "
+        "(SSIM>0.94, identical-text guard). pdf_builder.py writes the color image plus "
+        "invisible positioned text plus bookmarks; pptx_builder.py writes the editable "
+        "deck with OCR text in the notes. pipeline.py wires everything with per-stage "
+        "soft-failure notes and --formats pdf,pptx; 20+ modules across src/, app/, "
+        "tools/, tests/.")
     add(Paragraph("10. Screenshots / Results", h2))
     t = Table(seg, colWidths=[55 * mm, 20 * mm, 20 * mm, 20 * mm, 20 * mm])
     t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2456A6")),
@@ -227,14 +232,25 @@ def main():
                   "in summary.txt (16/16 on all four videos).",
                   b))
     img("keyframes_a.png", caption="Fig 8. Rectified keyframe grid (Stage 4 output on a_clean).")
+    add(Paragraph("Real-footage demo (demo/, Stanford CS231n Lecture 1, 100 s clip):", b))
+    add(Paragraph("3 segments, changes at 10.5 s / 12.0 s (clip-relative); the 12.0 s "
+                  "speaker-to-photo-slide cut is detected only with the consecutive-run "
+                  "burst rule (the old neighbourhood-count vetoed it). Non-slide filter "
+                  "drops the 2 presenter keyframes (4 words/0.55, 3 words/0.46) and keeps "
+                  "the photo slide (9+ words, 0.96 spread). Outputs demo/slides.pdf "
+                  "(color pages, invisible text layer) and demo/slides.pptx (OCR text in "
+                  "notes) are committed and byte-reproducible; see demo/DEMO.md.",
+                  b))
 
     # 11-15
     sec("11. Testing Approach",
-        "14 pytest cases split by stage: test_difference (signal fires/quiet/histogram runs), "
+        "21 pytest cases split by stage: test_difference (signal fires/quiet/histogram runs), "
         "test_detector (isolated cut confirms, 3-spike motion burst rejected, build blip ignored, "
-        "P/R/F1 counting), test_sharpness (sharp beats blur, LoG/Tenengrad agree), test_rectify "
-        "(output size, angled quad lock-on, corner ordering), test_dedup (superset builds "
-        "collapse, distinct slides kept), test_pipeline (end-to-end smoke: "
+        "cut-next-to-motion survives, P/R/F1 counting), test_sharpness (sharp beats blur, "
+        "LoG/Tenengrad agree), test_rectify (output size, angled quad lock-on, corner "
+        "ordering), test_dedup (superset builds collapse, distinct and identical-text "
+        "slides kept), test_nonslide (speaker drops, sparse/dense slides survive), "
+        "test_pptx (valid file, titles, notes), test_pipeline (end-to-end smoke: "
         "16 slides on a_clean). Corpus-level: per-video precision/recall/F1 plus OCR spot "
         "accuracy plus ablation, all reproducible via tools/evaluate.py and tools/ablation.py.")
     sec("12. Challenges Faced",

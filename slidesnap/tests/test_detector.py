@@ -30,13 +30,25 @@ def test_hysteresis_confirms_isolated_spike():
 
 
 def test_hysteresis_rejects_motion_burst():
-    # sustained motion burst (walk-by: 3 consecutive spikes, each within
-    # +-2 of the others, so the burst mask kills all of them) -> nothing.
+    # sustained motion burst (walk-by: 3 consecutive spikes = one run, so the
+    # consecutive-run mask kills all of them) -> nothing.
     spikes = [0, 0, 1, 1, 1, 0, 0, 0, 0, 0]
     stables = [1, 1, 0, 0, 0, 1, 1, 1, 1, 1]
     ts = [i * 0.5 for i in range(11)]
     changes, segs = DET.detect_changes(ts, _scores_from_flags(spikes, stables))
     assert changes == [], changes
+
+
+def test_clean_cut_next_to_motion_survives():
+    # regression from real CS231n footage: a clean cut sitting next to a
+    # motion run must NOT be vetoed by its neighbour. Cut at index 5, lone
+    # spike far from the 8-10 run, calm window after -> confirmed.
+    spikes = [0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0]
+    stables = [1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1]
+    ts = [i * 0.5 for i in range(14)]
+    changes, _ = DET.detect_changes(ts, _scores_from_flags(spikes, stables))
+    # change index = spike pair's right sample (score index 5 -> ts[6])
+    assert changes == [6], changes
 
 
 def test_hysteresis_ignores_build_blip_without_opening():

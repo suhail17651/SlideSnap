@@ -14,11 +14,12 @@ def detect_changes(timestamps, scores, sample_fps=None):
     Within-slide edits (build steps, writing reveals) are single-pair blips
     with calm neighbours, so they can neither open a false change nor break
     a real window; a real neighbouring slide change inside the window vetoes
-    confirmation. A presenter walk-by fires motion spikes on consecutive
-    scored pairs for ~1s, so any spike with more than BURST_MAX_SPIKES
-    spikes in its +-BURST_RADIUS neighbourhood is masked as motion before
-    confirmation (clean cuts are isolated single spikes and always survive
-    the mask). Covered by unit tests with synthetic transient spikes.
+    confirmation. Presenter walk-bys / camera pans fire spikes on CONSECUTIVE
+    scored pairs, so runs of >= BURST_MIN_RUN consecutive spikes are masked
+    as motion before confirmation (clean cuts are lone spikes, run length 1,
+    and always survive; 2-runs are kept too since a cut plus neighbour jitter
+    must not be punished). Covered by unit tests with synthetic spikes and
+    verified on a real CS231n lecture clip (motion bursts run 5-14 pairs).
 
     Returns:
       changes: list of sample indices (index into timestamps/frames) where a
@@ -34,18 +35,28 @@ def detect_changes(timestamps, scores, sample_fps=None):
     # scores[i] corresponds to pair (i -> i+1) in sample indexing where
     # scores list entry with "index" == i+1. Build lookup by right index.
     by_right = {s["index"]: s for s in scores}
-    # A presenter walk-by is a run of consecutive SPIKES (motion every
-    # scored pair for ~1s). Mask those runs first: any spike whose
-    # +-BURST_RADIUS neighbourhood contains more than BURST_MAX_SPIKES
-    # spikes is motion, not a cut. Clean cuts are isolated single spikes
-    # (need=2 calm window), so they always survive the mask.
-    radius = C.BURST_RADIUS
-    spike_set = {k for k, s in by_right.items() if s["spike"]}
+    # A presenter walk-by / camera pan fires spikes on CONSECUTIVE scored
+    # pairs. Mask only runs of >= BURST_MIN_RUN consecutive spike indices as
+    # motion — a neighbourhood-count would also kill a clean cut that happens
+    # to sit near motion (measured on real footage: the t~52s CS231n cut was
+    # vetoed by its neighbour's motion). Clean cuts are lone spikes (run
+    # length 1) and always survive the mask.
+    spike_sorted = sorted(k for k, s in by_right.items() if s["spike"])
     masked = set()
-    for k in spike_set:
-        cnt = sum(1 for j in range(k - radius, k + radius + 1) if j in spike_set)
-        if cnt > C.BURST_MAX_SPIKES:
-            masked.add(k)
+
+    def _flush(run):
+        if len(run) >= C.BURST_MIN_RUN:
+            masked.update(run)
+
+    run, prev = [], None
+    for k in spike_sorted:
+        if prev is not None and k == prev + 1:
+            run.append(k)
+        else:
+            _flush(run)
+            run = [k]
+        prev = k
+    _flush(run)
     changes = []
     seg_start = 0
     segments = []

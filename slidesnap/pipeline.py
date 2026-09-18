@@ -30,7 +30,9 @@ from src.enhance import binarize as BIN  # noqa: E402
 from src.enhance import deskew as DSK  # noqa: E402
 from src.ocr import extract as OCR  # noqa: E402
 from src.assemble import dedup as DD  # noqa: E402
+from src.assemble import nonslide as NSL  # noqa: E402
 from src.assemble import pdf_builder as PDF  # noqa: E402
+from src.assemble import pptx_builder as PPTX  # noqa: E402
 from src.debug import overlay as OV  # noqa: E402
 
 
@@ -42,13 +44,14 @@ def fmt_ts(s):
 
 
 def run(video_path, out_dir, debug=True, use_rectify=True, use_illum=True,
-        use_dedup=True, log=True):
+        use_dedup=True, log=True, formats=("pdf", "pptx")):
     t0 = time.time()
     os.makedirs(out_dir, exist_ok=True)
     dbg = os.path.join(out_dir, "debug") if debug else None
     if dbg:
         os.makedirs(dbg, exist_ok=True)
     notes = []  # soft-failure log
+    formats = tuple(f.lower() for f in (formats or ("pdf",)))
 
     # ---- Stage 1: sampling + scoring ----
     try:
@@ -148,8 +151,17 @@ def run(video_path, out_dir, debug=True, use_rectify=True, use_illum=True,
         except Exception as e:
             notes.append(f"keyframe grid failed: {e}")
 
-    # ---- Stage 6: dedup + PDF ----
+    # ---- Stage 6: non-slide filter + dedup + PDF ----
     pages_before = len(slides)
+    nonslide_removed = 0
+    nonslide_filtered = []
+    try:
+        slides, nonslide_filtered = NSL.filter_slides(slides)
+        nonslide_removed = len(nonslide_filtered)
+        for d in nonslide_filtered:
+            notes.append(f"non-slide @ {d.get('timestamp', 0):.1f}s: {d.get('reason')}")
+    except Exception as e:
+        notes.append(f"non-slide filter failed: {e}")
     dedup_removed = 0
     if use_dedup and len(slides) > 1:
         try:
@@ -157,10 +169,23 @@ def run(video_path, out_dir, debug=True, use_rectify=True, use_illum=True,
         except Exception as e:
             notes.append(f"dedup failed: {e}")
     pdf_path = os.path.join(out_dir, "slides.pdf")
-    try:
-        PDF.build_pdf(slides, pdf_path)
-    except Exception as e:
-        return {"ok": False, "error": f"PDF build failed: {e}",
+    pptx_path = os.path.join(out_dir, "slides.pptx")
+    built = {}
+    if "pdf" in formats:
+        try:
+            PDF.build_pdf(slides, pdf_path)
+            built["pdf"] = os.path.abspath(pdf_path)
+        except Exception as e:
+            return {"ok": False, "error": f"PDF build failed: {e}",
+                    "notes": notes}
+    if "pptx" in formats:
+        try:
+            PPTX.build_pptx(slides, pptx_path)
+            built["pptx"] = os.path.abspath(pptx_path)
+        except Exception as e:
+            notes.append(f"PPTX build failed (PDF still ok): {e}")
+    if not built:
+        return {"ok": False, "error": "no output formats requested",
                 "notes": notes}
 
     dt = time.time() - t0
@@ -169,13 +194,16 @@ def run(video_path, out_dir, debug=True, use_rectify=True, use_illum=True,
         "video": os.path.abspath(video_path),
         "slides": len(slides),
         "pages_before_dedup": pages_before,
+        "nonslide_removed": nonslide_removed,
         "dedup_removed": dedup_removed,
         "changes": [round(float(x), 2) for x in change_ts],
         "segments": len(segments),
         "skipped": skipped,
         "notes": notes,
         "seconds": round(dt, 1),
-        "pdf": os.path.abspath(pdf_path),
+        "pdf": built.get("pdf", ""),
+        "pptx": built.get("pptx", ""),
+        "formats": sorted(built),
         "ocr_available": any(s.get("ocr_available") for s in slides),
         "rectify_fallback_rate": sum(1 for k in keyframes if k.get("rectify_fallback")) / max(1, len(keyframes)),
     }
@@ -204,14 +232,17 @@ def main(argv=None):
     ap.add_argument("--keep-all", "--no-dedup", dest="keep_all", action="store_true",
                     help="disable build-deduplication")
     ap.add_argument("--no-log", action="store_true", help="skip scores.csv")
+    ap.add_argument("--formats", default="pdf,pptx",
+                    help="output formats, comma-separated subset of {pdf,pptx} (default: pdf,pptx)")
     a = ap.parse_args(argv)
     if not os.path.isfile(a.video):
         print(f"ERROR: input not found: {a.video}", file=sys.stderr)
         return 2
     try:
+        fmts = tuple(f.strip().lower() for f in a.formats.split(",") if f.strip())
         res = run(a.video, a.out, debug=not a.no_debug,
                   use_rectify=not a.no_rectify, use_illum=not a.no_illum,
-                  use_dedup=not a.keep_all, log=not a.no_log)
+                  use_dedup=not a.keep_all, log=not a.no_log, formats=fmts)
     except Exception:
         traceback.print_exc()
         return 1
@@ -220,9 +251,10 @@ def main(argv=None):
         for n in res.get("notes", []):
             print(f" note: {n}", file=sys.stderr)
         return 1
-    print(f"OK: {res['slides']} slides ({res['pages_before_dedup']} before dedup) -> {res['pdf']}")
+    print(f"OK: {res['slides']} slides ({res['pages_before_dedup']} before dedup) -> {res.get('pdf') or res.get('pptx')}")
     print(f"  changes @ {res['changes']}")
     print(f"  time {res['seconds']}s | skipped {len(res['skipped'])} | "
+          f"nonslide {res.get('nonslide_removed', 0)} | dedup {res.get('dedup_removed', 0)} | "
           f"rectify_fallback {res['rectify_fallback_rate']:.0%} | ocr {'yes' if res['ocr_available'] else 'NO (tesseract missing?)'}")
     for n in res.get("notes", []):
         print(f"  note: {n}")
