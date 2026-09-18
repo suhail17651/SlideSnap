@@ -1,15 +1,10 @@
-*.avi
-*.mkv
-*.mov
 __pycache__/
+*.pyc
+*.pyo
 .pytest_cache/
 out/
 /tmp/
-# course briefs (local only, not part of submission)
-BuildYourOwnProjectVITyarthi.pdf
-slide-extractor-roadmap.pdf
-
-# sample videos: large MJPG artefacts, regenerate via tools/make_samples.py
-slidesnap/data/samples/*.avi
-# demo clip is shipped (mp4 exception to the rule above)
-!slidesnap/demo/*.mp4
+*.avi
+*.mkv
+*.mov
+!demo/*.mp4

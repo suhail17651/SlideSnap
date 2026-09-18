@@ -1,9 +1,0 @@
-# SlideSnap ablation (10 mid-segment slides each, RapidOCR CPU)
-# a_clean: rectification unnecessary (camera already top-down) -> no gain, as expected
-a_clean full(rect+illum): acc=0.9143 pipe_seconds=26.3
-a_clean no-rectify: acc=0.9238 pipe_seconds=25.4
-a_clean no-illum: acc=0.7429 pipe_seconds=22.9
-# b_angled (perspective capture): rectification is what makes OCR work
-b_angled full(rect+illum): acc=0.7619
-b_angled no-rectify: acc=0.5905
-# => rectification +17.1pp on angled footage; illumination +17.1pp on clean footage

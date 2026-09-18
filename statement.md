@@ -11,10 +11,9 @@ services lack text versions of visual material.
 
 SlideSnap consumes a lecture recording (mp4/avi/mov/mkv/webm) and produces a
 deduplicated, perspective-corrected, OCR'd PDF of every distinct slide, with
-bookmarks linking each page back to its video timestamp. Fully CLI-runnable
-(`python -m slidesnap VIDEO --out OUT/`); the Streamlit UI is an optional
-demo. Out of scope: speaker diarization, audio transcription,
-handwritten-equation parsing.
+bookmarks linking each page back to its video timestamp. Fully CLI-runnable;
+the Streamlit UI is an optional demo. Out of scope: speaker diarization,
+audio transcription, handwritten-equation parsing.
 
 ## Target users
 
